@@ -1,7 +1,7 @@
 import Data.List
-import Data.Function(on);
-import Data.Char(isDigit);
+import Data.Char (isDigit)
 import Data.Ord
+
 
 ------------------------- Merge sort
 
@@ -87,8 +87,8 @@ disconnect i j xs = filter (\(a, b) -> notEqual (i, j) (a, b)) xs
 
 SOLUTION:
 
-- Need to merge together p and the existing ps (the current party) so
-that we do not include duplicates
+- Connect together the new parties, sort them using msort to maintain ordering property and to 
+remove duplicates.
 
 -}
 
@@ -138,7 +138,7 @@ remove p Over = Over
 remove p (Game x y ps z) = Game x y (remove' p ps) z
   where 
     remove' :: Party -> Party -> Party
-    remove' p ps = filter (\x -> not(elem x p)) ps 
+    remove' p ps = filter (\x -> not (elem x p)) ps 
 
 {-
 
@@ -159,6 +159,7 @@ removeAt n p (Game x y k pss) = Game x y k (removeAt' n p pss)
 
 SOLUTION:
 
+- Recycling removeAt function but supplying the input party.
 
 -}
 
@@ -254,15 +255,12 @@ dialogue game (Choice s rs) = do
   
   --(5)
   choice <- inputLoop
-  --(extra), use Data.Char to remove
 
   --(6)
   if elem (read choice :: Int) (map fst responses)
     then dialogue game (continueDialogue (read choice :: Int) responses)
     else return game
   
-
-
 
   where
     --(7)
@@ -350,7 +348,9 @@ step (Game m n p ps) = do
   mapM_ (\(index, character) -> putStrLn $ show index ++ ": " ++ character) charactersWith
 
   --(4)
-  let secondStartIndex = getNextStartIndex (charactersWith)
+
+  --Accounting for the case where the index is actually counting from available locations, since sometimes the current party is empty.
+  let secondStartIndex = if (charactersWith == []) then ( getNextStartIndex(locationsToTravelTo) ) else ( getNextStartIndex (charactersWith) )
   let charactersAtLocation = zip [secondStartIndex ..] (ps !! n)
   putStrLn "You can see: "
   mapM_ (\(index, character) -> putStrLn $ show index ++ ": " ++ character) charactersAtLocation
@@ -397,13 +397,11 @@ step (Game m n p ps) = do
       choice <- getLine
       let checkChoice = words choice
       --check if all of the strings in choice are digits
-      if (foldr (\x acc-> checkChoiceIsDigit x && acc) True checkChoice)
+      if (foldr (\x acc-> (isDigit $ head x) && acc) True checkChoice)
         then return choice
         else inputLoop
       
-      where
-        checkChoiceIsDigit :: String -> Bool
-        checkChoiceIsDigit choice = isDigit $ head choice
+      
 
 
 {-
@@ -463,7 +461,7 @@ talk game dialogue = talk' game dialogue []
     talk' :: Game -> Dialogue -> [Int] -> [(Game, [Int])]
     --(2)
     talk' game (Choice _ responses) xs = do
-      let new = zip [1..] (map(\(a, b) -> b) responses)
+      let new = zip [1..] (map(\(_, b) -> b) responses)
       concatMap (\(a, b) -> talk' game (b) (xs ++ [a])) (new) 
 
     --(3)
@@ -484,7 +482,7 @@ Then concatenate our results into a final result list.
 
 -}
 
-
+                                                           
 select :: Game -> [Party]
 --(1)
 select (Game _ n p ps) = combinations (p) (getPartyAtLocation n ps)
@@ -547,13 +545,13 @@ travel m n = travel' m n [] [n]
       getChoices m n = zip [1..] (connected m n)
 
       getShortest :: [(Node, [Int])] -> [(Node, [Int])]
-      --using do loop to make code more readable (not necessary)
       --(5)
       getShortest xs = do
         --(5a)
         let pathsToNode = groupBy (\(x, _) (y, _) -> x == y) $ msort xs
         --(5b)
         let getShortestPaths = map (head) (map (sortBy (comparing (length . snd))) (pathsToNode))
+        --let getShortestPaths = map (head) (map (sortBy (\(_,len1) (_,len2) -> compare len1 len2)) (pathsToNode))
         getShortestPaths
 
 
@@ -569,51 +567,40 @@ Solution should always be the list [Travel, Select, Talk]
 -}
 
 allSteps :: Game -> [(Solution, Game)]
-allSteps (Game m n p ps) = do
-  --
-  concatMap (\(a, b) -> getSolutions a b (Game m n p ps) ) (travel m n)
-    where
-      --
-      getSolutions :: Node -> [Int] -> Game -> [(Solution, Game)]
-    
-      getSolutions k t (Game m n p ps) = do
-        let newGameState = Game m k p ps
-        --
-        let availableParties = select (newGameState)
-        --
-        let dialogues = map (\p -> (p, findDialogue p)) (availableParties)
-        --
-        let talkResults = map (\(p, dialogue) -> (p, talk (newGameState) (dialogue))) dialogues
-        --
-        let solutions = [([Travel t, Select x, Talk y], g) | (x, ys) <- talkResults, (g, y) <- ys]
-        --
-        solutions
+allSteps (Game m n p ps) = 
+ concatMap (\(a, b) -> getSolutions a b (Game m n p ps)) (travel m n)
+   where
+     getSolutions :: Node -> [Int] -> Game -> [(Solution, Game)]
+     getSolutions k t (Game m n p ps) = do
+      --get new game state for each possible travel step
+      let newGameState = Game m k p ps
+      --get all the parties that could be selected 
+      let availableParties = select (newGameState)
+      --pair up all of the parties that could be selected with their dialogues
+      let dialogues = map (\p -> (p, findDialogue p)) (availableParties)
+      --pair up all of the parties with the talk result for dialogues
+      let talkResults = map (\(p, dialogue) -> (p, talk (newGameState) (dialogue))) dialogues
+      --take all solutions as triples of currently travelled path, selected party, and talk reslt
+      let solutions = [([Travel t, Select x, Talk y], g) | (x, ys) <- talkResults, (g, y) <- ys]
+      solutions
       
-
-{-
-We take all steps [(Solution, Game)], make call to solve' again with locally collecting solution and new game state until the over state is reached.
-
-
-
-
--}
 
 solve :: Game -> Solution
-solve game = solve' game []
-  where
-    solve' :: Game -> Solution -> Solution
-    solve' Over s = s
-    solve' game s = map (\(solution, newGame) -> solve' (newGame) (s ++ solution)) (allSteps game)
- 
-    
+solve g = solve' g []
+ where
+   solve' :: Game -> Solution -> Solution
+   solve' g s = 
+    --get all of the steps for the current game state
+     let steps = allSteps g
+     in 
+      case steps of
+        --return solution if no more steps available
+       [] -> s
+       --return the first solution (of which there could be a few).
+       _ -> head $ map (\(solution, newGameState) -> solve' newGameState (s ++ solution)) steps       
+        
 
       
-
-
-
-
-
-
 walkthrough :: IO ()
 walkthrough = (putStrLn . unlines . filter (not . null) . map format . solve) start
   where
@@ -627,10 +614,11 @@ walkthrough = (putStrLn . unlines . filter (not . null) . map format . solve) st
 ------------------------- Game data
 
 start :: Game
-start = Game theMap 0 [] theCharacters
+start = Game theMap 1 [] theCharacters
 
 theMap :: Map
 theMap = [(1,2),(1,6),(2,4)]
+
 
 theLocations :: [Location]
 theLocations =
@@ -673,13 +661,16 @@ theDialogues :: [(Party,Dialogue)]
 theDialogues = let
   always _ = True
   end str  = Choice str []
-  here        (Game _ n _ _ ) = n
+  isconn  _ _  Over           = False
   isconn  i j (Game m _ _ _ ) = elem i (connected m j)
-  isconn _ _ Over = False
-  isAt    n c (Game _ _ _ ps) = elem c (ps !! n)
+  here         Over           = 0
+  here        (Game _ n _ _ ) = n
+  inParty   _  Over           = False
   inParty   c (Game _ _ p _ ) = elem c p
+  isAt    _ _  Over           = False
+  isAt    n c (Game _ _ _ ps) = elem c (ps !! n)
+  updateMap _  Over           = Over
   updateMap f (Game m n p ps) = Game (f m) n p ps
-  updateMap _ Over = Over
  in
   [ ( ["Russell"] , Choice "Russell: Let's go on an adventure!"
       [ ("Sure." , end "You pack your bags and go with Russell.")
@@ -734,7 +725,7 @@ theDialogues = let
         ]
       ) (end "Howard: We need to find Curry. He'll know the way.")
     ) )
-  , ( ["Jean-Yves Girard"] , Branch (isconn 4 5) (Action "Raised on a large platform in the centre of the temple, Girard is preaching the Linearity Gospel. He seems in some sort of trance, so it is hard to make sense of, but you do pick up some interesting snippets. `Never Throw Anything Away' - you gather they must be environmentalists - `We Will Solve Church's Problems', `Only This Place Matters'... Perhaps, while he is speaking, now is a good time to take a peek behind the temple..." (updateMap (connect 4 5) )) (end "You have seen enough here.")
+  , ( ["Jean-Yves Girard"] , Branch (isconn 4 5)  (end "You have seen enough here.") (Action "Raised on a large platform in the centre of the temple, Girard is preaching the Linearity Gospel. He seems in some sort of trance, so it is hard to make sense of, but you do pick up some interesting snippets. `Never Throw Anything Away' - you gather they must be environmentalists - `We Will Solve Church's Problems', `Only This Place Matters'... Perhaps, while he is speaking, now is a good time to take a peek behind the temple..." (updateMap (connect 4 5) ))
     )
   , ( ["Vending machine"] , Choice "The walls of the Temple of Linearity are lined with vending machines. Your curiosity gets the better of you, and you inspect one up close. It sells the following items:"
       [ ( "Broccoli"  , end "You don't like broccoli." )
@@ -771,4 +762,3 @@ theDialogues = let
   , ( ["Bertrand Russell","Haskell Curry","Luitzen Brouwer"] , Branch ((==7).here) (end "Road trip! Road trip! Road trip!") (end "Let's head for Error!")
     )
   ]
-
