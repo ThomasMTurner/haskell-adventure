@@ -1,1 +1,1 @@
-# haskell-text-game
+# haskell-adventure
